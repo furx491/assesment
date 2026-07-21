@@ -84,11 +84,12 @@
   <form id="assessment"></form>
 
   <div class="actions">
-    <button type="button" class="calc" onclick="calcResult()">احسب النتيجة</button>
-    <div class="warn" id="warn">من فضلك أجب على كل الأسئلة قبل حساب النتيجة.</div>
+    <button type="button" class="calc" id="sendBtn" onclick="submitResult()">إرسال النتيجة</button>
+    <div class="warn" id="warn">من فضلك أجب على كل الأسئلة قبل الإرسال.</div>
+    <div id="sendStatus" style="margin-top:12px;font-size:15px;text-align:center"></div>
   </div>
 
-  <div class="card result" id="result">
+  <div class="card result" id="result" style="display:none">
     <div class="score-head">
       <div class="score-num"><span id="totalScore">0</span><small> / <span id="maxScore">0</span></small></div>
       <div class="verdict" id="verdict"></div>
@@ -96,10 +97,6 @@
     </div>
     <h2 style="margin-bottom:16px"><span class="num">📊</span> التوزيع حسب المحاور</h2>
     <div class="bars" id="bars"></div>
-    <div style="margin-top:24px;border-top:1px solid var(--line);padding-top:20px;text-align:center">
-      <button type="button" class="calc" id="sendBtn" onclick="sendResult()">إرسال النتيجة إلى القائم بالتقييم</button>
-      <div id="sendStatus" style="margin-top:12px;font-size:15px"></div>
-    </div>
   </div>
 
   <p class="foot">اختبار داخلي لأغراض التوظيف — النتيجة مؤشّر مساعد يُكمَّل بمقابلة شخصية وأسئلة موقفية فعلية.</p>
@@ -256,18 +253,13 @@ function calcResult(){
   var _st = document.getElementById('sendStatus'); if(_st){ _st.textContent=''; }
   var _sb = document.getElementById('sendBtn'); if(_sb){ _sb.disabled=false; _sb.style.opacity=1; }
 
-  const bars = document.getElementById('bars');
-  bars.innerHTML='';
-  secScores.forEach(s => {
-    bars.innerHTML += `<div class="bar-row"><div class="top"><span>${s.name}</span><span>${s.score}/${s.max}</span></div><div class="bar-track"><div class="bar-fill" style="width:0%"></div></div></div>`;
-  });
-  const result = document.getElementById('result');
-  result.classList.add('show');
-  setTimeout(() => {
-    const fills = bars.querySelectorAll('.bar-fill');
-    secScores.forEach((s,i) => { fills[i].style.width = Math.round((s.score/s.max)*100)+'%'; });
-  }, 60);
-  result.scrollIntoView({behavior:'smooth', block:'start'});
+  return true;
+}
+
+// المرشّح يدوس زرار واحد: بيحسب النتيجة في الخفا وبعدين يبعتها فورًا
+function submitResult(){
+  const ok = calcResult();
+  if(ok){ sendResult(); }
 }
 
 const FORMSPREE_ENDPOINT = "https://formspree.io/f/mwvgqwpz";
