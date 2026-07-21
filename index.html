@@ -74,10 +74,10 @@
     <h2><span class="num">١</span> بيانات المرشّح</h2>
     <p class="hint">تُملأ قبل بدء الاختبار.</p>
     <div class="grid">
-      <div class="field"><label>اسم المرشّح</label><input type="text" placeholder="الاسم بالكامل"></div>
-      <div class="field"><label>سنوات الخبرة</label><input type="text" placeholder="مثال: ٨ سنوات"></div>
-      <div class="field"><label>تاريخ الاختبار</label><input type="date"></div>
-      <div class="field"><label>اسم القائم بالتقييم</label><input type="text" placeholder="اسم المسؤول"></div>
+      <div class="field"><label>اسم المرشّح</label><input id="candName" type="text" placeholder="الاسم بالكامل"></div>
+      <div class="field"><label>سنوات الخبرة</label><input id="candExp" type="text" placeholder="مثال: ٨ سنوات"></div>
+      <div class="field"><label>تاريخ الاختبار</label><input id="candDate" type="date"></div>
+      <div class="field"><label>اسم القائم بالتقييم</label><input id="candEval" type="text" placeholder="اسم المسؤول"></div>
     </div>
   </div>
 
@@ -96,6 +96,10 @@
     </div>
     <h2 style="margin-bottom:16px"><span class="num">📊</span> التوزيع حسب المحاور</h2>
     <div class="bars" id="bars"></div>
+    <div style="margin-top:24px;border-top:1px solid var(--line);padding-top:20px;text-align:center">
+      <button type="button" class="calc" id="sendBtn" onclick="sendResult()">إرسال النتيجة إلى القائم بالتقييم</button>
+      <div id="sendStatus" style="margin-top:12px;font-size:15px"></div>
+    </div>
   </div>
 
   <p class="foot">اختبار داخلي لأغراض التوظيف — النتيجة مؤشّر مساعد يُكمَّل بمقابلة شخصية وأسئلة موقفية فعلية.</p>
@@ -231,6 +235,27 @@ function calcResult(){
   else { verdict.classList.add('lvl1'); verdict.textContent='يحتاج تقييمًا إضافيًا';
     desc.textContent='المؤشرات تشير لضعف في جوانب مهمة — يُفضّل مقابلة أعمق قبل القرار.'; }
 
+  // --- capture result for emailing ---
+  const answers = [];
+  form.querySelectorAll('.q').forEach(q => {
+    const checked = q.querySelector('input:checked');
+    const qtext = q.querySelector('.qtext').innerText.trim().replace(/\s+/g,' ');
+    const label = checked ? checked.closest('.opt').innerText.trim().replace(/\s+/g,' ') : '\u2014';
+    answers.push(qtext + '  \u27f5  ' + label);
+  });
+  lastResult = {
+    name: (document.getElementById('candName').value||'').trim(),
+    exp: (document.getElementById('candExp').value||'').trim(),
+    date: (document.getElementById('candDate').value||'').trim(),
+    evaluator: (document.getElementById('candEval').value||'').trim(),
+    total: total, max: TOTAL_MAX, pct: Math.round(pct*100),
+    verdict: verdict.textContent, desc: desc.textContent,
+    sections: secScores.map(x => x.name + ': ' + x.score + '/' + x.max).join('\n'),
+    answers: answers.join('\n')
+  };
+  var _st = document.getElementById('sendStatus'); if(_st){ _st.textContent=''; }
+  var _sb = document.getElementById('sendBtn'); if(_sb){ _sb.disabled=false; _sb.style.opacity=1; }
+
   const bars = document.getElementById('bars');
   bars.innerHTML='';
   secScores.forEach(s => {
@@ -243,6 +268,51 @@ function calcResult(){
     secScores.forEach((s,i) => { fills[i].style.width = Math.round((s.score/s.max)*100)+'%'; });
   }, 60);
   result.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+const FORMSPREE_ENDPOINT = "https://formspree.io/f/mwvgqwpz";
+let lastResult = null;
+
+function sendResult(){
+  const st = document.getElementById('sendStatus');
+  const sb = document.getElementById('sendBtn');
+  if(!lastResult){ st.style.color='#c0392b'; st.textContent='من فضلك احسب النتيجة الأول.'; return; }
+  sb.disabled = true; sb.style.opacity = 0.6;
+  st.style.color = 'var(--muted)'; st.textContent = 'جارٍ الإرسال…';
+
+  const payload = {};
+  payload["اسم المرشّح"] = lastResult.name || 'غير مذكور';
+  payload["سنوات الخبرة"] = lastResult.exp || 'غير مذكور';
+  payload["تاريخ الاختبار"] = lastResult.date || 'غير مذكور';
+  payload["القائم بالتقييم"] = lastResult.evaluator || 'غير مذكور';
+  payload["الدرجة الكلية"] = lastResult.total + ' / ' + lastResult.max;
+  payload["النسبة المئوية"] = lastResult.pct + '%';
+  payload["التقييم"] = lastResult.verdict;
+  payload["الوصف"] = lastResult.desc;
+  payload["درجات المحاور"] = lastResult.sections;
+  payload["كل الإجابات"] = lastResult.answers;
+  payload["_subject"] = "نتيجة اختبار توظيف — " + (lastResult.name || 'مرشّح');
+
+  fetch(FORMSPREE_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(function(r){
+    if(r.ok){
+      st.style.color = '#1e8449';
+      st.textContent = '✓ تم إرسال النتيجة بنجاح. شكرًا لك.';
+    } else {
+      st.style.color = '#c0392b';
+      st.textContent = 'تعذّر الإرسال. حاول مرة أخرى.';
+      sb.disabled = false; sb.style.opacity = 1;
+    }
+  })
+  .catch(function(){
+    st.style.color = '#c0392b';
+    st.textContent = 'تعذّر الاتصال بالإنترنت. حاول مرة أخرى.';
+    sb.disabled = false; sb.style.opacity = 1;
+  });
 }
 </script>
 </body>
