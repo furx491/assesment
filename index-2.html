@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>اختبار توظيف وتقييم</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;900&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --espresso:#2c2521;--walnut:#4a3a2e;--brass:#b07a2e;--brass-soft:#e9dcc4;
+    --olive:#5a6650;--stone:#ece7df;--paper:#ffffff;--line:#dcd4c8;--text:#2c2521;--muted:#7c7062;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Tajawal',sans-serif;background:var(--stone);color:var(--text);line-height:1.7;padding:24px 16px 80px}
+  .wrap{max-width:760px;margin:0 auto}
+  header{background:var(--espresso);color:#f4efe8;border-radius:14px;padding:34px 30px;position:relative;overflow:hidden}
+  header::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,rgba(176,122,46,.10) 0 2px,transparent 2px 26px)}
+  header .eyebrow{font-family:'Cairo';font-weight:700;letter-spacing:.5px;color:var(--brass);font-size:14px;margin-bottom:10px;position:relative}
+  header h1{font-family:'Cairo';font-weight:900;font-size:28px;line-height:1.35;position:relative}
+  header p{color:#c9bfb2;margin-top:10px;font-size:15px;position:relative;max-width:54ch}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:26px 24px;margin-top:20px}
+  .card h2{font-family:'Cairo';font-weight:700;font-size:19px;color:var(--walnut);display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .card h2 .num{background:var(--brass);color:#fff;font-size:15px;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex:none}
+  .card .hint{color:var(--muted);font-size:14px;margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .field label{display:block;font-weight:500;font-size:14px;margin-bottom:6px}
+  .field input{width:100%;padding:11px 14px;border:1px solid var(--line);border-radius:9px;font-family:inherit;font-size:15px;background:#fbfaf7}
+  .field input:focus{outline:2px solid var(--brass);border-color:transparent}
+  .q{margin-bottom:20px}
+  .q:last-child{margin-bottom:0}
+  .q .qtext{font-weight:700;font-size:16px;margin-bottom:12px}
+  .q .qtext span{color:var(--brass);margin-left:6px}
+  .opt{display:block;position:relative;margin-bottom:9px;cursor:pointer}
+  .opt input{position:absolute;opacity:0}
+  .opt .box{display:flex;align-items:center;gap:11px;padding:11px 14px;border:1px solid var(--line);border-radius:10px;background:#fbfaf7;transition:.15s;font-size:15px}
+  .opt .dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--muted);flex:none;transition:.15s}
+  .opt:hover .box{border-color:var(--brass)}
+  .opt input:checked + .box{background:var(--brass-soft);border-color:var(--brass);font-weight:500}
+  .opt input:checked + .box .dot{border-color:var(--brass);background:var(--brass);box-shadow:inset 0 0 0 3px var(--brass-soft)}
+  .opt input:focus-visible + .box{outline:2px solid var(--brass);outline-offset:2px}
+  .actions{margin-top:26px;text-align:center}
+  button.calc{font-family:'Cairo';font-weight:700;font-size:17px;color:#fff;background:var(--walnut);border:none;padding:15px 44px;border-radius:11px;cursor:pointer;transition:.15s}
+  button.calc:hover{background:var(--espresso)}
+  .warn{color:#a23b2d;font-weight:500;margin-top:12px;font-size:14px;display:none}
+  .result{display:none;margin-top:22px}
+  .result.show{display:block;animation:fade .4s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .score-head{text-align:center;padding:30px 24px 24px}
+  .score-num{font-family:'Cairo';font-weight:900;font-size:56px;line-height:1;color:var(--brass)}
+  .score-num small{font-size:22px;color:var(--muted);font-weight:700}
+  .verdict{font-family:'Cairo';font-weight:700;font-size:22px;margin-top:12px}
+  .verdict.lvl4{color:var(--olive)}.verdict.lvl3{color:var(--brass)}.verdict.lvl2{color:#b07a2e}.verdict.lvl1{color:#a23b2d}
+  .verdict-desc{color:var(--muted);margin-top:6px;font-size:15px}
+  .bars{margin-top:8px}
+  .bar-row{margin-bottom:14px}
+  .bar-row .top{display:flex;justify-content:space-between;font-size:14px;font-weight:500;margin-bottom:5px}
+  .bar-track{height:11px;background:var(--stone);border-radius:6px;overflow:hidden}
+  .bar-fill{height:100%;background:var(--brass);border-radius:6px;transition:width .6s ease}
+  .foot{color:var(--muted);font-size:13px;text-align:center;margin-top:26px}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}header h1{font-size:23px}}
+  @media print{body{background:#fff}button.calc,.warn{display:none}.card{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>اختبار توظيف وتقييم</h1>
+  </header>
+
+  <div class="card">
+    <h2><span class="num">١</span> بيانات المرشّح</h2>
+    <p class="hint">تُملأ قبل بدء الاختبار.</p>
+    <div class="grid">
+      <div class="field"><label>اسم المرشّح</label><input id="candName" type="text" placeholder="الاسم بالكامل"></div>
+      <div class="field"><label>سنوات الخبرة</label><input id="candExp" type="text" placeholder="مثال: ٨ سنوات"></div>
+      <div class="field"><label>تاريخ الاختبار</label><input id="candDate" type="date"></div>
+      <div class="field"><label>اسم القائم بالتقييم</label><input id="candEval" type="text" placeholder="اسم المسؤول"></div>
+    </div>
+  </div>
+
+  <form id="assessment"></form>
+
+  <div class="actions">
+    <button type="button" class="calc" id="sendBtn" onclick="submitResult()">إرسال النتيجة</button>
+    <div class="warn" id="warn">من فضلك أجب على كل الأسئلة قبل الإرسال.</div>
+    <div id="sendStatus" style="margin-top:12px;font-size:15px;text-align:center"></div>
+  </div>
+
+  <div class="card result" id="result" style="display:none">
+    <div class="score-head">
+      <div class="score-num"><span id="totalScore">0</span><small> / <span id="maxScore">0</span></small></div>
+      <div class="verdict" id="verdict"></div>
+      <div class="verdict-desc" id="verdictDesc"></div>
+    </div>
+    <h2 style="margin-bottom:16px"><span class="num">📊</span> التوزيع حسب المحاور</h2>
+    <div class="bars" id="bars"></div>
+  </div>
+
+  <p class="foot">اختبار داخلي لأغراض التوظيف — النتيجة مؤشّر مساعد يُكمَّل بمقابلة شخصية وأسئلة موقفية فعلية.</p>
+</div>
+
+<script>
+const sections = [
+  { num:"٢", title:"الثقة بالنفس", questions:[
+    {q:"لمّا بتواجه موقف صعب لأول مرة؟", opts:[
+      ["بتتعامل معاه بثقة وبتاخد قرار",4],["بتفكّر شوية وبعدين تتصرّف",3],["بتستنى حد يوجّهك",2],["بتحاول تتجنّب الموقف",1]]},
+    {q:"لمّا بتعرض شغلك أو خطتك قدّام فريق؟", opts:[
+      ["بتعرضها بثقة ووضوح",4],["بتعرضها عادي مع توتّر بسيط",3],["بتتوتّر بس بتكمّل",2],["بتفضّل حد تاني يعرض",1]]},
+    {q:"لو حد شكّك في قرارك؟", opts:[
+      ["بتوضّح أسبابك بهدوء وثقة",4],["بتناقشه وبتسمع رأيه",3],["بتراجع نفسك بسرعة",2],["بتغيّر رأيك عشان تتجنّب الجدال",1]]},
+    {q:"رأيك في قدرتك على تعلّم حاجات جديدة؟", opts:[
+      ["واثق إني أقدر أتعلّم أي مهارة جديدة",4],["عندي ثقة في معظم المجالات",3],["ثقتي بتعتمد على الموقف",2],["بشكّ في قدراتي كتير",1]]},
+    {q:"لمّا تنجح في مهمة صعبة؟", opts:[
+      ["بحسّ إني قادر على اللي أصعب منها",4],["بفرح وبكمّل",3],["بحسّها حظ أو مساعدة",2],["بستغرب إني نجحت",1]]},
+  ]},
+  { num:"٣", title:"الشخصية وأسلوب العمل", questions:[
+    {q:"أحبّ أن يكون عندي جدول واضح ومحدد لكل مهمة.", opts:[
+      ["ينطبق عليّ تمامًا",4],["ينطبق عليّ إلى حدّ كبير",3],["أحيانًا",2],["نادرًا / لا ينطبق",1]]},
+    {q:"أستمتع بترك الأمور مفتوحة لتغييرات اللحظة الأخيرة.", opts:[
+      ["ينطبق عليّ تمامًا",1],["ينطبق عليّ إلى حدّ كبير",2],["أحيانًا",3],["نادرًا / لا ينطبق",4]]},
+    {q:"أستمد الحماس من المناسبات الاجتماعية الكبيرة.", opts:[
+      ["ينطبق عليّ تمامًا",4],["ينطبق عليّ إلى حدّ كبير",3],["أحيانًا",2],["نادرًا / لا ينطبق",1]]},
+    {q:"أشعر بالنشاط عندما أكون محاطًا بالناس.", opts:[
+      ["ينطبق عليّ تمامًا",4],["ينطبق عليّ إلى حدّ كبير",3],["أحيانًا",2],["نادرًا / لا ينطبق",1]]},
+    {q:"أفضّل قضاء أمسياتي بمفردي أو مع دائرة ضيقة جدًّا من الأصدقاء.", opts:[
+      ["ينطبق عليّ تمامًا",1],["ينطبق عليّ إلى حدّ كبير",2],["أحيانًا",3],["نادرًا / لا ينطبق",4]]},
+    {q:"يهمّني استكشاف الاحتمالات المستقبلية أكثر من التفاصيل الحالية.", opts:[
+      ["ينطبق عليّ تمامًا",1],["ينطبق عليّ إلى حدّ كبير",2],["أحيانًا",3],["نادرًا / لا ينطبق",4]]},
+    {q:"أتخذ قراراتي بناءً على المنطق والتحليل البارد.", opts:[
+      ["ينطبق عليّ تمامًا",4],["ينطبق عليّ إلى حدّ كبير",3],["أحيانًا",2],["نادرًا / لا ينطبق",1]]},
+    {q:"أراعي مشاعر الآخرين قبل أن أحسم قراراتي.", opts:[
+      ["ينطبق عليّ تمامًا",4],["ينطبق عليّ إلى حدّ كبير",3],["أحيانًا",2],["نادرًا / لا ينطبق",1]]},
+  ]},
+  { num:"٤", title:"التنظيم والتخطيط", questions:[
+    {q:"طريقتك في بداية يوم أو أسبوع شغل؟", opts:[
+      ["بحدّد الأولويات وبعمل خطة واضحة",4],["بعمل قائمة مهام",3],["بشتغل حسب اللي بيجي",2],["من غير تخطيط محدّد",1]]},
+    {q:"لمّا يكون عندك أكتر من مهمة في نفس الوقت؟", opts:[
+      ["برتّبها بالأولوية والوقت وبتابعها",4],["بخلّص الأهم الأول",3],["بشتغل فيهم بالتوازي",2],["بتلخبط شوية",1]]},
+    {q:"لمّا الخطة تتعطّل بسبب ظرف طارئ؟", opts:[
+      ["عندي خطة بديلة وبعدّل بسرعة",4],["بعيد ترتيب الأولويات",3],["بتضايق بس بتصرّف",2],["بستنى لحد ما الأمور تتظبط",1]]},
+    {q:"إزاي بتتابع تقدّم خطتك؟", opts:[
+      ["بمؤشرات ومواعيد ومراجعة دورية",4],["بمتابعة يومية بسيطة",3],["بمراجعة لمّا أفتكر",2],["بعتمد على إني فاكر",1]]},
+    {q:"لمّا تكتشف إنك متأخّر عن الجدول؟", opts:[
+      ["بحلّل السبب وبعدّل الخطة فورًا",4],["بزوّد مجهودي عشان ألحق",3],["بشتغل عادي وأشوف",2],["بستنى حد ينبّهني",1]]},
+  ]},
+  { num:"٥", title:"متابعة العمليات والدقّة", questions:[
+    {q:"لمّا تتابع عملية شغّالة، بتركّز في إيه؟", opts:[
+      ["إنها ماشية حسب الخطة وبدوّر على أي انحراف بدري",4],["إن الناتج النهائي مظبوط",3],["إن محدش اشتكى",2],["بتابع لمّا تحصل مشكلة",1]]},
+    {q:"لقيت رقم أو بيانات مش متطابقة في تقرير؟", opts:[
+      ["براجع المصدر وأتأكّد قبل ما أكمّل",4],["بسأل المسؤول عنها",3],["بصحّحها بسرعة",2],["بعدّي لو الفرق بسيط",1]]},
+    {q:"إزاي بتضمن إن العمليات ماشية بدقّة؟", opts:[
+      ["نقاط فحص ومتابعة دورية وتوثيق",4],["متابعة عند نهاية كل مرحلة",3],["بأتأكّد في الآخر",2],["بعتمد على المسؤولين",1]]},
+    {q:"لاحظت إن في خطوة بتتكرّر وبتضيّع وقت؟", opts:[
+      ["بقترح تبسيطها أو أتمتتها",4],["بنبّه المسؤول عنها",3],["بكمّل زي ما هي",2],["مش من شغلي",1]]},
+    {q:"التقرير اللي بتسلّمه بيكون شكله إزاي؟", opts:[
+      ["واضح ومنظّم وفيه توصيات",4],["فيه الأرقام والملاحظات",3],["سريع وباختصار",2],["بعمله لمّا يتطلب مني",1]]},
+  ]},
+  { num:"٦", title:"التعامل مع الضغط والمشاكل", questions:[
+    {q:"تحت ضغط المواعيد النهائية؟", opts:[
+      ["بحافظ على هدوئي وبنظّم أولوياتي",4],["بشتغل بشكل طبيعي",3],["بتوتّر بس بخلّص",2],["الضغط بيأثّر على أدائي",1]]},
+    {q:"لمّا تحصل مشكلة مفاجئة في العمليات؟", opts:[
+      ["بحلّل السبب بسرعة وبلاقي حل",4],["بستعين بالفريق للحل",3],["بستنى توجيه المسؤول",2],["بتوتّر وبستصعب الموقف",1]]},
+    {q:"لمّا تلاقي نفسك في خلاف مع زميل؟", opts:[
+      ["بحلّه بالنقاش والاحترام",4],["بحاول ألاقي حل وسط",3],["بتجنّب المواجهة",2],["بتمسّك برأيي",1]]},
+    {q:"لمّا تفشل في تحقيق هدف؟", opts:[
+      ["بشوفها فرصة تعلّم وبحاول تاني",4],["بتضايق بس بكمّل بسرعة",3],["بحتاج وقت أرجع",2],["بفقد حماسي للموضوع",1]]},
+    {q:"لمّا يبقى عليك أكتر من ضغط في نفس الوقت؟", opts:[
+      ["بفضل هادي وبقسّم المشاكل",4],["بركّز على الأهم",3],["بتلخبط بس بتصرّف",2],["بتشتّت",1]]},
+  ]},
+  { num:"٧", title:"الولاء والانتماء للمكان", questions:[
+    {q:"جالك عرض شغل براتب أعلى شوية في مكان تاني؟", opts:[
+      ["أوازن بين المستقبل والاستقرار مش بس الراتب",4],["أناقش مع إدارتي قبل أي قرار",3],["أفكّر جدّي في العرض",2],["أمشي على طول",1]]},
+    {q:"المكان مرّ بأزمة مؤقتة؟", opts:[
+      ["أساند وأقترح حلول",4],["أفضل موجود وأشتغل عادي",3],["أدوّر على بديل بهدوء",2],["أمشي فورًا",1]]},
+    {q:"لمّا تلاقي مشكلة في مكان مش من اختصاصك؟", opts:[
+      ["أتعامل معاها كإنها مشكلتي وأساعد",4],["أبلّغ المسؤول عنها",3],["أتدخّل لو عندي وقت",2],["مش من شغلي",1]]},
+    {q:"رأيك في سرّية معلومات الشركة؟", opts:[
+      ["سرّية تامة حتى بعد ترك العمل",4],["سرّية أثناء فترة العمل",3],["عادي أشاركها مع ناس موثوقين",2],["مش مهمة قوي",1]]},
+    {q:"إيه اللي بيخلّيك تفضل في مكان شغل؟", opts:[
+      ["التطوّر والاحترام والانتماء مش بس الفلوس",4],["بيئة عمل مريحة",3],["الراتب أساسًا",2],["لحد ما ألاقي أحسن",1]]},
+  ]},
+];
+
+let qCounter = 0;
+const form = document.getElementById('assessment');
+sections.forEach((sec, sIdx) => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  let html = `<h2><span class="num">${sec.num}</span> ${sec.title}</h2>`;
+  sec.questions.forEach(item => {
+    qCounter++;
+    const qName = 'q' + qCounter;
+    html += `<div class="q"><div class="qtext"><span>${qCounter}.</span>${item.q}</div>`;
+    item.opts.forEach(o => {
+      html += `<label class="opt"><input type="radio" name="${qName}" data-sec="${sIdx}" value="${o[1]}"><span class="box"><span class="dot"></span>${o[0]}</span></label>`;
+    });
+    html += `</div>`;
+  });
+  card.innerHTML = html;
+  form.appendChild(card);
+});
+
+const TOTAL_Q = qCounter;
+const TOTAL_MAX = TOTAL_Q * 4;
+document.getElementById('maxScore').textContent = TOTAL_MAX;
+
+function calcResult(){
+  const warn = document.getElementById('warn');
+  const answered = form.querySelectorAll('input[type=radio]:checked');
+  if(answered.length < TOTAL_Q){ warn.style.display='block'; return; }
+  warn.style.display='none';
+
+  let total = 0;
+  const secScores = sections.map(s => ({name:s.title, score:0, max:s.questions.length*4}));
+  answered.forEach(a => { const v=parseInt(a.value); total+=v; secScores[parseInt(a.dataset.sec)].score+=v; });
+
+  document.getElementById('totalScore').textContent = total;
+  const pct = total / TOTAL_MAX;
+
+  const verdict = document.getElementById('verdict');
+  const desc = document.getElementById('verdictDesc');
+  verdict.className='verdict';
+  if(pct >= .85){ verdict.classList.add('lvl4'); verdict.textContent='ممتاز — مرشّح مثالي لمنصب مدير إنتاج';
+    desc.textContent='مهارات قيادية وفنية قوية مع ولاء عالٍ. مناسب جدًا للمنصب.'; }
+  else if(pct >= .68){ verdict.classList.add('lvl3'); verdict.textContent='جيد جدًا — مرشّح قوي';
+    desc.textContent='أداء قوي في معظم المحاور مع مساحة بسيطة للتطوير.'; }
+  else if(pct >= .50){ verdict.classList.add('lvl2'); verdict.textContent='جيد — مرشّح مقبول';
+    desc.textContent='قدرات مناسبة لكنه يحتاج تطوير في بعض الجوانب قبل المنصب القيادي.'; }
+  else { verdict.classList.add('lvl1'); verdict.textContent='يحتاج تقييمًا إضافيًا';
+    desc.textContent='المؤشرات تشير لضعف في جوانب مهمة — يُفضّل مقابلة أعمق قبل القرار.'; }
+
+  // --- capture result for emailing ---
+  const answers = [];
+  form.querySelectorAll('.q').forEach(q => {
+    const checked = q.querySelector('input:checked');
+    const qtext = q.querySelector('.qtext').innerText.trim().replace(/\s+/g,' ');
+    const label = checked ? checked.closest('.opt').innerText.trim().replace(/\s+/g,' ') : '\u2014';
+    answers.push(qtext + '  \u27f5  ' + label);
+  });
+  lastResult = {
+    name: (document.getElementById('candName').value||'').trim(),
+    exp: (document.getElementById('candExp').value||'').trim(),
+    date: (document.getElementById('candDate').value||'').trim(),
+    evaluator: (document.getElementById('candEval').value||'').trim(),
+    total: total, max: TOTAL_MAX, pct: Math.round(pct*100),
+    verdict: verdict.textContent, desc: desc.textContent,
+    sections: secScores.map(x => x.name + ': ' + x.score + '/' + x.max).join('\n'),
+    answers: answers.join('\n')
+  };
+  var _st = document.getElementById('sendStatus'); if(_st){ _st.textContent=''; }
+  var _sb = document.getElementById('sendBtn'); if(_sb){ _sb.disabled=false; _sb.style.opacity=1; }
+
+  return true;
+}
+
+// المرشّح يدوس زرار واحد: بيحسب النتيجة في الخفا وبعدين يبعتها فورًا
+function submitResult(){
+  const ok = calcResult();
+  if(ok){ sendResult(); }
+}
+
+const FORMSPREE_ENDPOINT = "https://formspree.io/f/mwvgqwpz";
+let lastResult = null;
+
+function sendResult(){
+  const st = document.getElementById('sendStatus');
+  const sb = document.getElementById('sendBtn');
+  if(!lastResult){ st.style.color='#c0392b'; st.textContent='من فضلك احسب النتيجة الأول.'; return; }
+  sb.disabled = true; sb.style.opacity = 0.6;
+  st.style.color = 'var(--muted)'; st.textContent = 'جارٍ الإرسال…';
+
+  const payload = {};
+  payload["اسم المرشّح"] = lastResult.name || 'غير مذكور';
+  payload["سنوات الخبرة"] = lastResult.exp || 'غير مذكور';
+  payload["تاريخ الاختبار"] = lastResult.date || 'غير مذكور';
+  payload["القائم بالتقييم"] = lastResult.evaluator || 'غير مذكور';
+  payload["الدرجة الكلية"] = lastResult.total + ' / ' + lastResult.max;
+  payload["النسبة المئوية"] = lastResult.pct + '%';
+  payload["التقييم"] = lastResult.verdict;
+  payload["الوصف"] = lastResult.desc;
+  payload["درجات المحاور"] = lastResult.sections;
+  payload["كل الإجابات"] = lastResult.answers;
+  payload["_subject"] = "نتيجة اختبار توظيف — " + (lastResult.name || 'مرشّح');
+
+  fetch(FORMSPREE_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(function(r){
+    if(r.ok){
+      st.style.color = '#1e8449';
+      st.textContent = '✓ تم إرسال النتيجة بنجاح. شكرًا لك.';
+    } else {
+      st.style.color = '#c0392b';
+      st.textContent = 'تعذّر الإرسال. حاول مرة أخرى.';
+      sb.disabled = false; sb.style.opacity = 1;
+    }
+  })
+  .catch(function(){
+    st.style.color = '#c0392b';
+    st.textContent = 'تعذّر الاتصال بالإنترنت. حاول مرة أخرى.';
+    sb.disabled = false; sb.style.opacity = 1;
+  });
+}
+</script>
+</body>
+</html>
