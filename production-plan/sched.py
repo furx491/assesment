@@ -3,7 +3,7 @@
 import openpyxl, re, json, math, datetime as dt
 from collections import defaultdict, Counter
 from override import OVERRIDE, ov_minutes
-from status_update import STATUS, RT
+from status_update import STATUS, RT, FINISHED, DEFERRED, remap, to_nw
 U='/root/.claude/uploads/fdb1b8fa-74fd-56bd-9c54-782073111ccf/'
 def num(v): return v if isinstance(v,(int,float)) else 0
 def nz(s):
@@ -24,6 +24,7 @@ WORKERS={'نجارة التنجيد':42,'السفنجة':19,'التفصيل وا
 # طاقات فرعية جوه التفصيل والكسوة (البرومبت: خياطة 2، تفصيل 6، فايبر وكسوة 14)
 SUBCAP={'التفصيل والكسوة':{'مبكر':(2+6),'متأخر':14}}
 EXCLUDE={'Kosan','تانجل ترابيزه جانبيه','هاربر ترابيزة رئيسية اريكة','لوليتا ترابيزة جانبية'}
+EXCLUDE|=FINISHED   # خلصت خالص — بأمر المستخدمة
 
 def workdays(n0):
     d=START; out=[]
@@ -141,11 +142,38 @@ for r in active:
     stage=r[5]; dept=r[6]
     fs=(r[4]=='NEW') or (stage is None) or (str(stage).strip() in DEPTNAME)
     src='مسار من الملف'; OPL={}
-    if p in STATUS:
-        if p in _seen_status: continue      # الكمية في التحديث إجمالية — أمر واحد مجمّع
+    _skeys=[kk for kk,vv in STATUS.items() if (vv.get('match') or kk)==p]
+    if _skeys:
+        if p in _seen_status: continue      # الكميات في التحديث إجمالية — أوامر مجمّعة
         _seen_status.add(p)
-        st=STATUS[p]; q=st['qty']; dsc=bdisc(q)
-        work={d:m*q*(1-dsc) for d,m in st['rem'].items()}
+        for _sk in _skeys:
+            st=STATUS[_sk]; q=st['qty']; dsc=bdisc(q)
+            _rem=st['rem']
+            if _rem is None:                                  # ارجع لتقدير الفئة
+                kc=cat_of(p); _cur=ORDW.get(st['cur'],0)
+                _rem={d:m for d,m in catavg.get(kc,{}).items() if ORDW.get(d,9)>=_cur}
+            work={d:m*q*(1-dsc) for d,m in _rem.items()}
+            work=remap(work,p,cat_of(p))
+            br={}
+            for d in work:
+                if d in ('تشطيب التنجيد','تشطيب نوم وسفرة'): br[d]=('Z',9)
+                elif d in ('القشرة','الدهانات'): br[d]=('B',ORDW[d])
+                else: br[d]=('A',ORDW.get(d,9))
+            OPL2={}
+            for d in work:
+                if p in RT and d in RT[p] and st['rem']:
+                    tot=sum(x[2] for x in RT[p][d]) or 1
+                    OPL2[d]=[(n,m*q*(1-dsc)*(st['rem'][d]/tot)/60.0) for _,n,m in RT[p][d]]
+            if 'اريكة' in p or 'اريكة' in trk: P,sub,lab,dd=1,0,'أريكة — تجاري عاجل',dt.date(2026,9,10)
+            elif c and c in due:                P,sub,lab,dd=1,1,f'معرض — {cust.get(c,"")}',due[c]
+            elif r[7]=='الاسبوع الحالي':        P,sub,lab,dd=1,2,'مصنع — الأسبوع الحالي',dt.date(2026,9,10)
+            else:                               P,sub,lab,dd=2,3,'مصنع — باقي التشغيل',None
+            ORDERS.append(dict(id=r[0],prod=_sk,qty=q,trk=trk,nf=c,P=P,sub=sub,lab=lab,due=dd,opl=OPL2,
+                work={k2:v2/60.0 for k2,v2 in work.items()},br=br,src='تحديث حالة منك',
+                cur=st['cur'],stage=st['stage'],ready=st.get('ready',START)))
+        continue
+    if False:
+        st=None; q=r[2] or 1; dsc=bdisc(qty[p]); work={}
         br={}
         for d in work:
             if d in ('تشطيب التنجيد','تشطيب نوم وسفرة'): br[d]=('Z',9)
@@ -155,12 +183,15 @@ for r in active:
             if p in RT and d in RT[p]:
                 tot=sum(x[2] for x in RT[p][d]) or 1
                 OPL[d]=[(n,m*q*(1-dsc)*(st['rem'][d]/tot)) for _,n,m in RT[p][d]]
-        stage=st['stage']; dept=st['cur']; src='تحديث حالة منك'
     elif p in OVERRIDE:
         mn=ov_minutes(OVERRIDE[p],1); cur=ORDW.get(dept,0)
-        work={d:m*q*(1-dsc) for d,m in mn.items() if ORDW.get(d,9)>=cur}; br={d:('A',ORDW[d]) for d in work}
+        work={d:m*q*(1-dsc) for d,m in mn.items() if ORDW.get(d,9)>=cur}
         for d,lst in OVERRIDE[p].items():
             if d in work: OPL[d]=[(o_[0],o_[2]*q*(1-dsc)) for o_ in lst]
+        work=remap(work,p,cat_of(p))
+        if 'نجارة النوم والسفرة' in work and 'نجارة التنجيد' in OPL:
+            OPL['نجارة النوم والسفرة']=OPL.pop('نجارة التنجيد')
+        br={d:('A',ORDW[d]) for d in work}
         src='مسار يدوي (منك)'
     elif p=='سبايدر كرسي سفرة':
         continue
@@ -172,7 +203,8 @@ for r in active:
     else:
         k=cat_of(p)
         if not (k and k in catavg): continue
-        work={d:m*q*(1-dsc) for d,m in catavg[k].items()}; br={d:('A',ORDW.get(d,9)) for d in work}
+        work=remap({d:m*q*(1-dsc) for d,m in catavg[k].items()},p,k)
+        br={d:('Z',9) if d.startswith('تشطيب') else (('B',ORDW[d]) if d in ('القشرة','الدهانات') else ('A',ORDW.get(d,9))) for d in work}
         src=f'تقديري — متوسط "{k}"'
     if not work: continue
     if 'اريكة' in p or 'اريكة' in trk: P,sub,lab,dd=1,0,'أريكة — تجاري عاجل',dt.date(2026,9,10)
@@ -182,7 +214,8 @@ for r in active:
     work={k2:v2/60.0 for k2,v2 in work.items()}      # دقيقة -> ساعة
     OPL={d:[(n,m/60.0) for n,m in l] for d,l in OPL.items()}
     ORDERS.append(dict(id=r[0],prod=p,qty=q,trk=trk,nf=c,P=P,sub=sub,lab=lab,due=dd,opl=OPL,work=dict(work),br=br,
-                       src=src,cur=dept,stage=stage,ready=MAT_DATE if fs else START))
+                       src=src,cur=dept,stage=stage,
+                       ready=DEFERRED.get(p, MAT_DATE if fs else START)))
 # سبايدر — أمر واحد مجمّع (128 كرسي، 90 خلصوا لحام)
 r3=sum(m for n,m in chair['الاستانلس'][5:]); fl=sum(m for n,m in chair['الاستانلس'])
 ORDERS.append(dict(id='SPIDER-128',prod='سبايدر كرسي سفرة (الكرسي الاستالس)',qty=128,trk='عمرو حسن',nf=None,
