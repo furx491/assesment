@@ -3,7 +3,7 @@
 import openpyxl, re, json, math, datetime as dt
 from collections import defaultdict, Counter
 from override import OVERRIDE, ov_minutes
-from status_update import STATUS, RT, FINISHED, DEFERRED, EXCLUDE_IDS, is_bpo_excluded, remap, to_nw
+from status_update import STATUS, STATUS_BY_ID, RT, FINISHED, DEFERRED, EXCLUDE_IDS, is_bpo_excluded, remap, to_nw
 U='/root/.claude/uploads/fdb1b8fa-74fd-56bd-9c54-782073111ccf/'
 def num(v): return v if isinstance(v,(int,float)) else 0
 def nz(s):
@@ -133,13 +133,20 @@ for r in active:
     p=str(r[1] or '').strip()
     if p not in EXCLUDE and r[0] not in EXCLUDE_IDS and not is_bpo_excluded(r[0]): qty[p]+=r[2] or 1
 def bdisc(q): return .20 if q>=20 else .15 if q>=10 else .10 if q>=5 else 0.0
+# متوسط دقائق القسم لكل وحدة عبر كل المنتجات اللي بتعدي عليه — شبكة أمان
+DEPT_AVG={}
+for _d in set(dd for c in ops for dd in ops[c]):
+    _v=[sum(x[2] for x in ops[c][_d]) for c in ops if _d in ops[c]]
+    DEPT_AVG[_d]=sum(_v)/len(_v) if _v else 0.0
 
 ORDERS=[]; _seen_status=set()
 for r in active:
     p=str(r[1] or '').strip()
     if p in EXCLUDE or r[0] in EXCLUDE_IDS or is_bpo_excluded(r[0]): continue
     q=r[2] or 1; trk=str(r[3] or ''); c=nfc(trk); dsc=bdisc(qty[p])
-    stage=r[5]; dept=r[6]
+    stage=r[5]; dept=r[6]; _note=''
+    if r[0] in STATUS_BY_ID:
+        _sb=STATUS_BY_ID[r[0]]; dept=_sb['cur']; stage=_sb['stage']; _note=_sb.get('note','')
     fs=(r[4]=='NEW') or (stage is None) or (str(stage).strip() in DEPTNAME)
     src='مسار من الملف'; OPL={}
     _skeys=[kk for kk,vv in STATUS.items() if (vv.get('match') or kk)==p]
@@ -186,6 +193,9 @@ for r in active:
     elif p in OVERRIDE:
         mn=ov_minutes(OVERRIDE[p],1); cur=ORDW.get(dept,0)
         work={d:m*q*(1-dsc) for d,m in mn.items() if ORDW.get(d,9)>=cur}
+        if not work:
+            work={dept: DEPT_AVG.get(dept,0.0)*q*(1-dsc)} if dept in DEPT_AVG else {}
+            src=f'تقديري — متوسط قسم "{dept}"'
         for d,lst in OVERRIDE[p].items():
             if d in work: OPL[d]=[(o_[0],o_[2]*q*(1-dsc)) for o_ in lst]
         work=remap(work,p,cat_of(p))
@@ -203,7 +213,13 @@ for r in active:
     else:
         k=cat_of(p)
         if not (k and k in catavg): continue
-        work=remap({d:m*q*(1-dsc) for d,m in catavg[k].items()},p,k)
+        _c=ORDW.get(dept,0)
+        _base={d:m for d,m in catavg[k].items() if ORDW.get(d,9)>=_c}
+        if not _base:
+            # الأوردر واقف في قسم مش موجود في متوسط فئته — خده بمتوسط القسم نفسه
+            _base={dept: DEPT_AVG.get(dept,0.0)} if dept in DEPT_AVG else dict(catavg[k])
+            src=f'تقديري — متوسط قسم "{dept}" (فئة "{k}" مفيهاش القسم ده)'
+        work=remap({d:m*q*(1-dsc) for d,m in _base.items()},p,k)
         br={d:('Z',9) if d.startswith('تشطيب') else (('B',ORDW[d]) if d in ('القشرة','الدهانات') else ('A',ORDW.get(d,9))) for d in work}
         src=f'تقديري — متوسط "{k}"'
     if not work: continue
@@ -214,7 +230,7 @@ for r in active:
     work={k2:v2/60.0 for k2,v2 in work.items()}      # دقيقة -> ساعة
     OPL={d:[(n,m/60.0) for n,m in l] for d,l in OPL.items()}
     ORDERS.append(dict(id=r[0],prod=p,qty=q,trk=trk,nf=c,P=P,sub=sub,lab=lab,due=dd,opl=OPL,work=dict(work),br=br,
-                       src=src,cur=dept,stage=stage,
+                       src=(src+' | '+_note if _note else src),cur=dept,stage=stage,
                        ready=DEFERRED.get(p, MAT_DATE if fs else START)))
 # سبايدر — أمر واحد مجمّع (128 كرسي، 90 خلصوا لحام)
 r3=sum(m for n,m in chair['الاستانلس'][5:]); fl=sum(m for n,m in chair['الاستانلس'])

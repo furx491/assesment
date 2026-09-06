@@ -40,7 +40,46 @@ DAYF=Font(bold=True,size=12); DAYB=PatternFill('solid',fgColor='BDD7EE'); FRI=Pa
 P1F=PatternFill('solid',fgColor='FFC7CE'); P2F=PatternFill('solid',fgColor='FFF2CC')
 thin=Border(*[Side(style='thin',color='B0B0B0')]*4)
 
-def tab(d,title):
+def is_bed(prod):
+    return ('سرير' in str(prod)) or ('bed' in str(prod).lower())
+
+def bed_tab(title):
+    """شغل نجارة السراير لوحده — من نجارة التنجيد ونجارة النوم والسفرة"""
+    DEPTS=('نجارة التنجيد','نجارة النوم والسفرة')
+    ws=wb.create_sheet(title); ws.sheet_view.rightToLeft=True
+    ws.append(['خطة شغل نجارة السراير',None,None,None,
+               'شغل النجارة لكل السراير — مجمّع من نجارة التنجيد ونجارة النوم والسفرة'])
+    ws['A1'].font=Font(bold=True,size=14); ws.append([])
+    ws.append(['التاريخ','اليوم','أولوية','كود الأمر','المنتج','كمية','العميل',
+               'القسم الأصلي','يبدأ اليوم من','يقف عند (آخر اليوم)','ساعات','يكمّل يوم','يخلص القسم يوم'])
+    for c in ws[3]: c.font=HF;c.fill=HB;c.alignment=Alignment(horizontal='center',wrap_text=True)
+    row=4; tot_all=0
+    for t,day in enumerate(DAYS):
+        if day>dt.date(2026,10,10): continue
+        items=[(d,k,h) for d in DEPTS for k,h in plan[t][d] if is_bed(byrank[k]['prod'])]
+        if not items: continue
+        tot=sum(h for _,_,h in items); tot_all+=tot
+        ws.append([str(day),AR[day.weekday()],'— ملخص اليوم —','',f'إجمالي {tot:.1f} ساعة',
+                   len(items),'','',f'≈ {math.ceil(tot/NORM)} عامل','',round(tot,1),'',''])
+        for c in ws[row]: c.font=DAYF; c.fill=FRI if day.weekday()==4 else DAYB; c.border=thin
+        row+=1
+        for d,k,h in sorted(items,key=lambda x:(byrank[x[1]]['P'],byrank[x[1]]['sub'],-x[2])):
+            o=byrank[k]; L=seq[k][d]
+            before=sum(hh for tt,hh in L if tt<t); after=before+h
+            nxt=[tt for tt,_ in L if tt>t]; last=DAYS[max(tt for tt,_ in L)]
+            ws.append([str(day),AR[day.weekday()],f"P{o['P']}",o['id'],o['prod'],o['qty'],
+                       (o['trk'] or '—')[:34], d,
+                       label(o,d,before,False), label(o,d,after,True), round(h,2),
+                       str(DAYS[nxt[0]]) if nxt else 'خلص ✔', str(last)])
+            f=P1F if o['P']==1 else P2F
+            for c in ws[row]: c.fill=f; c.border=thin
+            row+=1
+    for i,x in enumerate([12,10,7,17,26,6,32,20,28,28,9,13,14],1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width=x
+    ws.freeze_panes='A4'
+    return tot_all
+
+def tab(d,title,skip_beds=False):
     ws=wb.create_sheet(title); ws.sheet_view.rightToLeft=True
     ws.append([f'خطة شغل قسم: {d}',None,None,None,f'عدد العمال: {W[d]}',
                f'الطاقة: {W[d]*NORM:.0f} ساعة عادي + {W[d]*OT:.0f} سهر','','','','','',''])
@@ -50,7 +89,7 @@ def tab(d,title):
     for c in ws[3]: c.font=HF;c.fill=HB;c.alignment=Alignment(horizontal='center',wrap_text=True)
     row=4
     for t,day in enumerate(DAYS):
-        items=plan[t][d]
+        items=[(k,h) for k,h in plan[t][d] if not (skip_beds and is_bed(byrank[k]['prod']))]
         if not items or day>dt.date(2026,10,10): continue
         tot=sum(h for _,h in items); need=min(math.ceil(tot/NORM),W[d])
         exc=max(0.0,deptdayO[t][d]-W[d]*NORM); otp=min(W[d],math.ceil(exc/OT)) if exc>0.01 else 0
@@ -61,7 +100,9 @@ def tab(d,title):
         for c in ws[row]: c.font=DAYF; c.fill=FRI if day.weekday()==4 else DAYB; c.border=thin
         row+=1
         for k,h in sorted(items,key=lambda x:(byrank[x[0]]['P'],byrank[x[0]]['sub'],-x[1])):
-            o=byrank[k]; L=seq[k][d]
+            o=byrank[k]
+            if skip_beds and is_bed(o['prod']): continue
+            L=seq[k][d]
             before=sum(hh for tt,hh in L if tt<t)
             after=before+h
             nxt=[tt for tt,_ in L if tt>t]
@@ -100,6 +141,9 @@ for t,day in enumerate(DAYS):
     r+=1
 for i,x in enumerate([12,10]+[20]*len(TABS),1): ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width=x
 ws.freeze_panes='C4'
-for d,title in TABS: tab(d,title)
-wb.move_sheet('0-ملخص كل الأقسام', offset=-len(TABS))
+BEDW=bed_tab('1ب-نجارة سراير')
+for d,title in TABS: tab(d,title, skip_beds=(d in ('نجارة التنجيد','نجارة النوم والسفرة')))
+wb.move_sheet('0-ملخص كل الأقسام', offset=-(len(TABS)+1))
+wb.move_sheet('1ب-نجارة سراير', offset=-(len(TABS)-1))
+print(f"نجارة السراير: {BEDW:.0f} ساعة")
 wb.save('خطة_المشرفين.xlsx'); print("تم: خطة_المشرفين.xlsx")
