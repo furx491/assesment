@@ -11,10 +11,10 @@ def nz(s):
     return re.sub(r'\s+',' ',s).strip()
 
 # ============ SETTINGS ============
-START=dt.date(2026,9,6); EFF=.75; BUF=.10
+START=dt.date(2026,9,7); EFF=.75; BUF=.10   # الاتنين
 NORM_H=(5*1.00+3*0.90)*EFF*(1-BUF)      # 5.20 ساعة/فرد/يوم
 OT_H  = 4.5*0.70      *EFF*(1-BUF)      # 2.13 ساعة/فرد/يوم
-FRIDAY_OFF=True
+FRIDAY_OFF=False   # الجمعة شغل — بأمر المستخدمة
 SEALER_LAG=1          # رش السيلر آخر اليوم → أقرب عملية تالية صباح اليوم التالي
 MAT_DATE=dt.date(2026,9,7)
 CNC_MIN_PER_JOB=20; CNC_MAX_MIN=90
