@@ -3,7 +3,7 @@
 import openpyxl, re, json, math, datetime as dt
 from collections import defaultdict, Counter
 from override import OVERRIDE, ov_minutes
-from status_update import STATUS, RT, FINISHED, DEFERRED, EXCLUDE_IDS, remap, to_nw
+from status_update import STATUS, RT, FINISHED, DEFERRED, EXCLUDE_IDS, is_bpo_excluded, remap, to_nw
 U='/root/.claude/uploads/fdb1b8fa-74fd-56bd-9c54-782073111ccf/'
 def num(v): return v if isinstance(v,(int,float)) else 0
 def nz(s):
@@ -131,13 +131,13 @@ def nfc(t):
 qty=Counter()
 for r in active:
     p=str(r[1] or '').strip()
-    if p not in EXCLUDE and r[0] not in EXCLUDE_IDS: qty[p]+=r[2] or 1
+    if p not in EXCLUDE and r[0] not in EXCLUDE_IDS and not is_bpo_excluded(r[0]): qty[p]+=r[2] or 1
 def bdisc(q): return .20 if q>=20 else .15 if q>=10 else .10 if q>=5 else 0.0
 
 ORDERS=[]; _seen_status=set()
 for r in active:
     p=str(r[1] or '').strip()
-    if p in EXCLUDE or r[0] in EXCLUDE_IDS: continue
+    if p in EXCLUDE or r[0] in EXCLUDE_IDS or is_bpo_excluded(r[0]): continue
     q=r[2] or 1; trk=str(r[3] or ''); c=nfc(trk); dsc=bdisc(qty[p])
     stage=r[5]; dept=r[6]
     fs=(r[4]=='NEW') or (stage is None) or (str(stage).strip() in DEPTNAME)
