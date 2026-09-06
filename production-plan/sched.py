@@ -146,7 +146,11 @@ for r in active:
         _seen_status.add(p)
         st=STATUS[p]; q=st['qty']; dsc=bdisc(q)
         work={d:m*q*(1-dsc) for d,m in st['rem'].items()}
-        br={d:('B',ORDW[d]) if d in ('القشرة','الدهانات') and 'السفنجة' in st['rem'] else ('A',ORDW.get(d,9)) for d in work}
+        br={}
+        for d in work:
+            if d in ('تشطيب التنجيد','تشطيب نوم وسفرة'): br[d]=('Z',9)
+            elif d in ('القشرة','الدهانات'): br[d]=('B',ORDW[d])
+            else: br[d]=('A',ORDW.get(d,9))
         for d in work:
             if p in RT and d in RT[p]:
                 tot=sum(x[2] for x in RT[p][d]) or 1
