@@ -81,7 +81,8 @@ def bed_tab(title):
 
 def tab(d,title,skip_beds=False):
     ws=wb.create_sheet(title); ws.sheet_view.rightToLeft=True
-    ws.append([f'خطة شغل قسم: {d}',None,None,None,f'عدد العمال: {W[d]}',
+    _extra=' (1 تقديم + 3 تجميع — كرو مستقل)' if d=='نجارة سراير' else ''
+    ws.append([f'خطة شغل قسم: {d}',None,None,None,f'عدد العمال: {W[d]}{_extra}',
                f'الطاقة: {W[d]*NORM:.0f} ساعة عادي + {W[d]*OT:.0f} سهر','','','','','',''])
     ws['A1'].font=Font(bold=True,size=14); ws.append([])
     ws.append(['التاريخ','اليوم','أولوية','كود الأمر','المنتج','كمية','العميل',
@@ -120,7 +121,8 @@ def tab(d,title,skip_beds=False):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width=x
     ws.freeze_panes='A4'
 
-TABS=[('نجارة التنجيد','1-نجارة التنجيد'),('التفصيل والكسوة','2-الكسوة'),('الدهانات','3-الدهانات'),
+TABS=[('نجارة التنجيد','1-نجارة التنجيد'),('نجارة سراير','1ب-نجارة سراير'),
+      ('التفصيل والكسوة','2-الكسوة'),('الدهانات','3-الدهانات'),
       ('نجارة النوم والسفرة','4-نجارة النوم والسفرة'),('السفنجة','5-السفنجة'),('القشرة','6-القشرة'),
       ('الاستانلس','7-الاستانلس'),('تشطيب التنجيد','8-تشطيب التنجيد'),('تشطيب نوم وسفرة','9-تشطيب نوم وسفرة')]
 ws=wb.create_sheet('0-ملخص كل الأقسام'); ws.sheet_view.rightToLeft=True
@@ -141,9 +143,6 @@ for t,day in enumerate(DAYS):
     r+=1
 for i,x in enumerate([12,10]+[20]*len(TABS),1): ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width=x
 ws.freeze_panes='C4'
-BEDW=bed_tab('1ب-نجارة سراير')
-for d,title in TABS: tab(d,title, skip_beds=(d in ('نجارة التنجيد','نجارة النوم والسفرة')))
-wb.move_sheet('0-ملخص كل الأقسام', offset=-(len(TABS)+1))
-wb.move_sheet('1ب-نجارة سراير', offset=-(len(TABS)-1))
-print(f"نجارة السراير: {BEDW:.0f} ساعة")
+for d,title in TABS: tab(d,title)
+wb.move_sheet('0-ملخص كل الأقسام', offset=-len(TABS))
 wb.save('خطة_المشرفين.xlsx'); print("تم: خطة_المشرفين.xlsx")

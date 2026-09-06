@@ -3,7 +3,7 @@
 import openpyxl, re, json, math, datetime as dt
 from collections import defaultdict, Counter
 from override import OVERRIDE, ov_minutes
-from status_update import STATUS, STATUS_BY_ID, RT, FINISHED, DEFERRED, EXCLUDE_IDS, is_bpo_excluded, remap, to_nw
+from status_update import STATUS, STATUS_BY_ID, RT, FINISHED, DEFERRED, EXCLUDE_IDS, MISSING_TIME, is_bpo_excluded, remap, to_nw
 U='/root/.claude/uploads/fdb1b8fa-74fd-56bd-9c54-782073111ccf/'
 def num(v): return v if isinstance(v,(int,float)) else 0
 def nz(s):
@@ -19,8 +19,20 @@ FRIDAY_OFF=False   # الجمعة شغل — بأمر المستخدمة
 SEALER_LAG=1          # رش السيلر آخر اليوم → أقرب عملية تالية صباح اليوم التالي
 MAT_DATE=dt.date(2026,9,7)
 CNC_MIN_PER_JOB=20; CNC_MAX_MIN=90
-WORKERS={'نجارة التنجيد':42,'السفنجة':19,'التفصيل والكسوة':22,'الاستانلس':16,'الدهانات':30,
-         'القشرة':9,'نجارة النوم والسفرة':15,'تشطيب التنجيد':5,'تشطيب نوم وسفرة':3}
+# نجارة السراير كرو مستقل: 1 تقديم + 3 تجميع = 4
+# مخصومين من نجارة التنجيد (42 ← 38) عشان مانخترعش طاقة زيادة
+WORKERS={'نجارة التنجيد':38,'نجارة سراير':4,'السفنجة':19,'التفصيل والكسوة':22,'الاستانلس':16,
+         'الدهانات':30,'القشرة':9,'نجارة النوم والسفرة':15,'تشطيب التنجيد':5,'تشطيب نوم وسفرة':3}
+BED_DEPT='نجارة سراير'
+def is_bed(prod): return ('سرير' in str(prod)) or ('bed' in str(prod).lower())
+def bed_route(work, prod):
+    """شغل نجارة السراير يروح لقسم السراير المستقل"""
+    if not is_bed(prod): return work
+    w={}
+    for d,h in work.items():
+        w2 = BED_DEPT if d in ('نجارة التنجيد','نجارة النوم والسفرة') else d
+        w[w2]=w.get(w2,0)+h
+    return w
 # طاقات فرعية جوه التفصيل والكسوة (البرومبت: خياطة 2، تفصيل 6، فايبر وكسوة 14)
 SUBCAP={'التفصيل والكسوة':{'مبكر':(2+6),'متأخر':14}}
 EXCLUDE={'Kosan','تانجل ترابيزه جانبيه','هاربر ترابيزة رئيسية اريكة','لوليتا ترابيزة جانبية'}
@@ -44,6 +56,13 @@ for r in [x for x in wr.iter_rows(values_only=True)][1:]:
     ops[r[3]][r[1]].append((r[6] if isinstance(r[6],int) else 999,str(r[7] or ''),num(r[8])))
 for c in ops:
     for d in ops[c]: ops[c][d].sort()
+# الأوقات الناقصة: وزّع الإجمالي المعتمد بالتساوي على عمليات القسم
+for c in list(ops):
+    for d in list(ops[c]):
+        key=(pname.get(c),d)
+        if key in MISSING_TIME and sum(x[2] for x in ops[c][d])==0:
+            tot,_src=MISSING_TIME[key]; n=len(ops[c][d])
+            ops[c][d]=[(sq,nm,tot/n) for sq,nm,_ in ops[c][d]]
 name2code={}
 for c,n in pname.items(): name2code.setdefault(n,c)
 wc=openpyxl.load_workbook(U+'485a723f-______________________.xlsx',data_only=True)['Sheet1']
@@ -59,6 +78,7 @@ def branches(code):
     for dp in d:
         if dp in ('تشطيب التنجيد','تشطيب نوم وسفرة'): br[dp]=('Z',9)
         elif dp=='الاستانلس' and len(d)>1: br[dp]=('C',1)
+        elif dp==BED_DEPT: br[dp]=('A',1)
         elif split and dp in ('القشرة','الدهانات'): br[dp]=('B',ORDW[dp])
         else: br[dp]=('A',ORDW.get(dp,9))
     return br
@@ -227,6 +247,14 @@ for r in active:
     elif c and c in due:                P,sub,lab,dd=1,1,f'معرض — {cust.get(c,"")}',due[c]
     elif r[7]=='الاسبوع الحالي':        P,sub,lab,dd=1,2,'مصنع — الأسبوع الحالي',dt.date(2026,9,10)
     else:                               P,sub,lab,dd=2,3,'مصنع — باقي التشغيل',None
+    work=bed_route(work,p)
+    if is_bed(p):
+        _o={}
+        for d,l in OPL.items():
+            d2=BED_DEPT if d in ('نجارة التنجيد','نجارة النوم والسفرة') else d
+            _o[d2]=_o.get(d2,[])+l
+        OPL=_o
+        br={(BED_DEPT if d in ('نجارة التنجيد','نجارة النوم والسفرة') else d):v for d,v in br.items()}
     work={k2:v2/60.0 for k2,v2 in work.items()}      # دقيقة -> ساعة
     OPL={d:[(n,m/60.0) for n,m in l] for d,l in OPL.items()}
     ORDERS.append(dict(id=r[0],prod=p,qty=q,trk=trk,nf=c,P=P,sub=sub,lab=lab,due=dd,opl=OPL,work=dict(work),br=br,
