@@ -46,6 +46,32 @@ IN_MATERIALS_COLS = ["المنتج", "الموديل", "كود المنتج", "�
                      "كود الخامة", "اسم الخامة", "الكمية للوحدة", "الوحدة", "المصدر"]
 IN_COUNTS_COLS = ["اسم المنتج", "العدد"]
 
+# حساب القشرة: تابات ملف القشرة ثم تابة المدخلات داخل الملف الناتج
+VEN_SHEET_COUNTS = "الاعداد "
+VEN_COUNTS_LABEL = "تابة الأعداد في ملف القشرة"
+VEN_SHEET_NEED = "احتياج القشرة"
+IN_VENEER = "مدخلات - احتياج القشرة"
+IN_VENEER_COLS = ["المنتج (كما ورد)", "النص الأصلي", "المنتج المطابق",
+                  "نوع القشرة", "متر للوحدة", "العدد المطلوب", "مصدر العدد"]
+
+# أسماء في تابة القشرة مكتوبة بصيغة مختلفة عن تابة الأعداد
+VENEER_ALIASES = {
+    "palma dresser": "Palma Drawer Dresser",
+    "beech side": "Beech Side Tables",
+    "mirlia dresser": "Marlia Drawer Dresser",
+    "sleek coffebar coffee": "Sleek Coffe Bar",
+    "malia tv": "Malia TV unit",
+    "fluted round": "Fluted Round Middle Table",
+    "rattan corner shelf coffee": "Rattan Corner Shelf",
+    "costa rattan desk coffee": "Costa Rattan Desk",
+    "turin chair": "فوتية تورين",
+    # سطر واحد يغطي المقاسين معًا — العدد = عدد الأطقم
+    "odeno middle table set": "Odeon Middle Table large",
+}
+
+# كلمات الكميات المكتوبة نصًا في عمود القشرة
+QTY_WORDS = {"نص": 0.5, "نصف": 0.5, "ربع": 0.25, "واحد": 1.0}
+
 COLS = ["code", "collection", "prod_en", "model", "piece_type",
         "furx_name", "old_code", "old_name", "category", "version",
         "dept", "mat_code", "mat_name", "mat_type", "qty_per_unit",
@@ -95,7 +121,7 @@ def clean_text(value):
 def match_key(value):
     """مفتاح مطابقة أسماء المنتجات: بدون أقواس ولا مسافات زائدة ولا حروف كبيرة."""
     text = clean_text(value)
-    text = re.sub(r"[\[\]()]", " ", text)
+    text = re.sub(r"[\[\]()_]", " ", text)  # بعض الأسماء بها _ أو سطر جديد
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
@@ -336,6 +362,174 @@ def build_issues(df, counts):
     return pd.DataFrame(rows, columns=["النوع", "البند", "التفاصيل"])
 
 
+
+# --------------------------------------------------------------------------
+# حساب القشرة (ملف منفصل: تابة أعداد + تابة "احتياج القشرة" بنص حر)
+# --------------------------------------------------------------------------
+def parse_veneer(text):
+    """تحويل نص مثل «2 متر ارو مسنن» أو «نص متر ارو مفجر» إلى (النوع، الأمتار)."""
+    value = re.sub(r"\s+", " ", clean_text(text))
+    if not value:
+        return "", None
+
+    if "مسنن" in value:
+        kind = "ارو مسنن"
+    elif "مفجر" in value:
+        kind = "ارو مفجر"
+    elif "امريكي" in value:
+        kind = "ارو امريكي"
+    else:
+        kind = ""
+
+    number = re.match(r"^([\d.]+)", value)
+    if number:
+        return kind, float(number.group(1))
+    for word, amount in QTY_WORDS.items():
+        if value.startswith(word):
+            return kind, amount
+    if value.startswith("متر"):  # «متر ارو مسنن» تعني مترًا واحدًا
+        return kind, 1.0
+    return kind, None
+
+
+def load_veneer(path, main_counts):
+    """قراءة ملف القشرة وربط كل منتج بعدده. main_counts احتياطي للأسماء الناقصة."""
+    need = pd.read_excel(path, sheet_name=VEN_SHEET_NEED).iloc[:, :2]
+    need.columns = ["product_raw", "veneer_text"]
+    need = need[need["product_raw"].notna()].copy()
+
+    own = pd.read_excel(path, sheet_name=VEN_SHEET_COUNTS).iloc[:, :2]
+    own.columns = ["product", "count"]
+    own = own[own["product"].notna()]
+    own_counts = {match_key(p): (clean_text(p), c)
+                  for p, c in zip(own["product"], own["count"])}
+    fallback = {match_key(p): (clean_text(p), c)
+                for p, c in zip(main_counts["product"], main_counts["count"])}
+
+    rows = []
+    for _, r in need.iterrows():
+        raw = clean_text(r["product_raw"])
+        kind, per_unit = parse_veneer(r["veneer_text"])
+        key = match_key(VENEER_ALIASES.get(match_key(raw), raw))
+
+        if key in own_counts:
+            matched, count, source = own_counts[key][0], own_counts[key][1], VEN_COUNTS_LABEL
+        elif key in fallback:
+            matched, count, source = fallback[key][0], fallback[key][1], "تابة الأعداد الرئيسية"
+        else:
+            matched, count, source = "", 0, "غير موجود"
+
+        rows.append({
+            "product_raw": raw,
+            "veneer_text": clean_text(r["veneer_text"]),
+            "product": matched,
+            "kind": kind or UNSPECIFIED,
+            "per_unit": per_unit,
+            "count": pd.to_numeric(count, errors="coerce") or 0,
+            "count_source": source,
+        })
+
+    veneer = pd.DataFrame(rows)
+    veneer["per_unit"] = pd.to_numeric(veneer["per_unit"], errors="coerce")
+    veneer["total_m"] = veneer["per_unit"].fillna(0) * veneer["count"]
+    return veneer, own
+
+
+def same_veneer_kind(new_kind, bom_kind):
+    """هل النوعان نفس الخامة؟ على افتراض أن «ارو مسنن» هو «ارو امريكي» في القائمة القديمة."""
+    if bom_kind == "غير موجود":
+        return "—"
+    if "مفجر" in new_kind and "مفجر" in bom_kind:
+        return "متطابق"
+    if "مسنن" in new_kind and "امريكي" in bom_kind:
+        return "متطابق"
+    return "مختلف"
+
+
+def load_veneer_tab(path):
+    """قراءة تابة مدخلات القشرة من ملف أنتجه هذا السكربت (لتشغيل الملف على نفسه)."""
+    src = pd.read_excel(path, sheet_name=IN_VENEER)
+    veneer = pd.DataFrame({
+        "product_raw": src["المنتج (كما ورد)"].map(clean_text),
+        "veneer_text": src["النص الأصلي"].map(clean_text),
+        "product": src["المنتج المطابق"].map(clean_text),
+        "kind": src["نوع القشرة"].map(clean_text),
+        "per_unit": pd.to_numeric(src["متر للوحدة"], errors="coerce"),
+        "count": pd.to_numeric(src["العدد المطلوب"], errors="coerce").fillna(0),
+        "count_source": src["مصدر العدد"].map(clean_text),
+    })
+    veneer["total_m"] = veneer["per_unit"].fillna(0) * veneer["count"]
+    own = pd.DataFrame({"product": veneer["product"], "count": veneer["count"]})
+    return veneer, own[own["product"] != ""]
+
+
+def build_veneer_tables(veneer, detail):
+    """إجمالي كل نوع قشرة + مقارنة مع الأمتار المستخرجة من قائمة الخامات."""
+    totals = (
+        veneer.groupby("kind", as_index=False)
+        .agg(total_m=("total_m", "sum"),
+             products=("product_raw", "count"),
+             pieces=("count", "sum"))
+        .sort_values("total_m", ascending=False)
+    )
+
+    bom = detail[detail["mat_name_std"].str.contains("قشرة", na=False)]
+    bom_by_product = (
+        bom.groupby("product")
+        .agg(bom_m=("total_qty", "sum"),
+             bom_kind=("mat_name_std", lambda s: " + ".join(sorted(set(s)))))
+    )
+
+    compare = []
+    for _, r in veneer.iterrows():
+        if not r["product"]:
+            continue
+        key = match_key(r["product"])
+        hit = [i for i in bom_by_product.index if match_key(i) == key]
+        bom_m = float(bom_by_product.loc[hit[0], "bom_m"]) if hit else None
+        bom_kind = bom_by_product.loc[hit[0], "bom_kind"] if hit else "غير موجود"
+        compare.append([r["product"], r["kind"], round(float(r["total_m"]), 2),
+                        bom_kind, round(bom_m, 2) if bom_m is not None else "—",
+                        round(float(r["total_m"]) - bom_m, 2) if bom_m is not None else "—",
+                        same_veneer_kind(r["kind"], bom_kind)])
+    compare = pd.DataFrame(compare, columns=["المنتج", "نوع القشرة (هذا الملف)",
+                                             "أمتار (هذا الملف)", "القشرة في قائمة الخامات",
+                                             "أمتار (قائمة الخامات)", "الفرق", "توافق النوع"])
+    return totals, compare
+
+
+def veneer_issues(veneer, counts):
+    rows = []
+    for _, r in veneer.iterrows():
+        if r["per_unit"] is None or pd.isna(r["per_unit"]):
+            rows.append(["القشرة: كمية غير مقروءة", r["product_raw"],
+                         f"النص «{r['veneer_text']}» لا يبدأ برقم — لم يُحسب."])
+        if r["kind"] == UNSPECIFIED:
+            rows.append(["القشرة: نوع غير معروف", r["product_raw"],
+                         f"النص «{r['veneer_text']}» لا يذكر مسنن ولا مفجر."])
+        if not r["product"]:
+            rows.append(["القشرة: منتج بلا عدد", r["product_raw"],
+                         "غير موجود في تابة الأعداد — حُسب بعدد صفر."])
+        elif r["count_source"] != VEN_COUNTS_LABEL:
+            rows.append(["القشرة: العدد من مصدر آخر", r["product_raw"],
+                         f"غير موجود في تابة أعداد ملف القشرة؛ أُخذ العدد "
+                         f"({r['count']:g}) من {r['count_source']} باسم «{r['product']}»."])
+        if match_key(r["product_raw"]) in ("odeno middle table set",):
+            rows.append(["القشرة: سطر يغطي مقاسين", r["product_raw"],
+                         f"سطر واحد للمقاسين. حُسب على أنه {r['count']:g} طقم × "
+                         f"{r['per_unit']:g} متر = {r['total_m']:g} متر. لو المقصود "
+                         f"{r['per_unit']:g} متر لكل مقاس على حدة فالرقم يتضاعف إلى "
+                         f"{r['total_m'] * 2:g} متر."])
+
+    listed = {match_key(p) for p in veneer["product"] if p}
+    for product, count in zip(counts["product"], counts["count"]):
+        if count > 0 and match_key(product) not in listed:
+            rows.append(["القشرة: منتج بلا سطر قشرة", clean_text(product),
+                         f"مطلوب {count:g} قطعة ولا يوجد له سطر في تابة «{VEN_SHEET_NEED}» "
+                         "— اعتُبر بلا قشرة."])
+    return pd.DataFrame(rows, columns=["النوع", "البند", "التفاصيل"])
+
+
 # --------------------------------------------------------------------------
 # كتابة ملف الإكسل
 # --------------------------------------------------------------------------
@@ -385,7 +579,7 @@ def write_sheet(wb, title, headers, rows, widths, number_cols=(), table_name=Non
     return ws
 
 
-def write_summary(wb, df, detail, by_dept, grand, issues, counts):
+def write_summary(wb, df, detail, by_dept, grand, issues, counts, veneer_pack=None):
     ws = wb.create_sheet("ملخص", 0)
     ws.sheet_view.rightToLeft = True
     ws.sheet_view.showGridLines = False
@@ -460,6 +654,28 @@ def write_summary(wb, df, detail, by_dept, grand, issues, counts):
             ws.cell(row=r, column=col).border = BORDER
         r += 1
 
+    if veneer_pack:
+        _, totals, _ = veneer_pack
+        r += 2
+        title("احتياج القشرة حسب النوع", r); r += 1
+        head(r, ["نوع القشرة", "إجمالي الأمتار", "عدد المنتجات"]); r += 1
+        for _, row in totals.iterrows():
+            ws.cell(row=r, column=1, value=row["kind"])
+            cell = ws.cell(row=r, column=2, value=round(float(row["total_m"]), 2))
+            cell.number_format = "#,##0.00"
+            cell.alignment = Alignment(horizontal="center")
+            ws.cell(row=r, column=3, value=int(row["products"])).alignment = Alignment(
+                horizontal="center")
+            for col in range(1, 4):
+                ws.cell(row=r, column=col).border = BORDER
+            r += 1
+        ws.cell(row=r, column=1, value="الإجمالي العام").font = Font(bold=True)
+        cell = ws.cell(row=r, column=2, value=round(float(totals["total_m"].sum()), 2))
+        cell.number_format = "#,##0.00"
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center")
+        r += 1
+
     r += 2
     title("أعلى 15 خامة من حيث الكمية المطلوبة", r); r += 1
     head(r, ["اسم الخامة", "الوحدة", "الكمية الإجمالية"]); r += 1
@@ -499,6 +715,40 @@ def write_summary(wb, df, detail, by_dept, grand, issues, counts):
     return ws
 
 
+def write_veneer_sheets(wb, veneer, totals, compare):
+    """ثلاث تابات للقشرة: الإجمالي لكل نوع، تفصيل المنتجات، ومقارنة بقائمة الخامات."""
+    grand = float(totals["total_m"].sum())
+    write_sheet(
+        wb, "القشرة - الإجمالي",
+        ["نوع القشرة", "إجمالي الأمتار المطلوبة", "عدد المنتجات", "إجمالي القطع"],
+        [[r["kind"], round(float(r["total_m"]), 2), int(r["products"]), int(r["pieces"])]
+         for _, r in totals.iterrows()] +
+        [["الإجمالي العام", round(grand, 2), int(totals["products"].sum()), ""]],
+        [22, 26, 15, 15], number_cols={2},
+    )
+    last = wb["القشرة - الإجمالي"].max_row
+    for cell in wb["القشرة - الإجمالي"][last]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="DDEBF7")
+
+    write_sheet(
+        wb, "القشرة - تفصيل المنتجات",
+        ["المنتج", "نوع القشرة", "متر للوحدة", "العدد المطلوب",
+         "إجمالي الأمتار", "النص الأصلي"],
+        [[r["product"] or r["product_raw"], r["kind"],
+          "—" if pd.isna(r["per_unit"]) else float(r["per_unit"]),
+          int(r["count"]), round(float(r["total_m"]), 2), r["veneer_text"]]
+         for _, r in veneer.sort_values(["kind", "total_m"], ascending=[True, False]).iterrows()],
+        [32, 16, 14, 15, 16, 24], number_cols={3, 5}, table_name="VeneerDetail",
+    )
+
+    write_sheet(
+        wb, "القشرة - مقارنة بقائمة الخامات",
+        list(compare.columns), compare.values.tolist(),
+        [32, 20, 18, 34, 20, 12, 14], number_cols={3, 5, 6}, table_name="VeneerCompare",
+    )
+
+
 def write_inputs(wb, df, counts):
     """تابتا المدخلات: كل أسطر الخامات والأعداد — قابلة للتعديل وإعادة التشغيل."""
     rows = df.sort_values(["product", "dept", "mat_name"], kind="stable")
@@ -511,7 +761,7 @@ def write_inputs(wb, df, counts):
         number_cols={7}, table_name="InputMaterials", head_fill=IN_HEAD_FILL,
     )
 
-    known = {match_key(p) for p in counts["product"]}
+    known = {match_key(p) for p in counts["product"]}  # noqa: E501
     extra = [(p, 0) for p in sorted(set(df["product"])) if match_key(p) not in known]
     write_sheet(
         wb, IN_COUNTS, IN_COUNTS_COLS,
@@ -521,7 +771,19 @@ def write_inputs(wb, df, counts):
     )
 
 
-def write_output(path, df, detail, by_dept, grand, issues, counts):
+def write_veneer_input(wb, veneer):
+    write_sheet(
+        wb, IN_VENEER, IN_VENEER_COLS,
+        [[r["product_raw"], r["veneer_text"], r["product"], r["kind"],
+          "" if pd.isna(r["per_unit"]) else float(r["per_unit"]),
+          int(r["count"]), r["count_source"]]
+         for _, r in veneer.iterrows()],
+        [30, 22, 30, 16, 14, 15, 26],
+        number_cols={5}, table_name="InputVeneer", head_fill=IN_HEAD_FILL,
+    )
+
+
+def write_output(path, df, detail, by_dept, grand, issues, counts, veneer_pack=None):
     wb = Workbook()
     wb.remove(wb.active)
 
@@ -566,8 +828,14 @@ def write_output(path, df, detail, by_dept, grand, issues, counts):
         for cell in row:
             cell.alignment = Alignment(horizontal="right", vertical="center", wrap_text=True)
 
+    if veneer_pack:
+        veneer, totals, compare = veneer_pack
+        write_veneer_sheets(wb, veneer, totals, compare)
+
     write_inputs(wb, df, counts)
-    write_summary(wb, df, detail, by_dept, grand, issues, counts)
+    if veneer_pack:
+        write_veneer_input(wb, veneer_pack[0])
+    write_summary(wb, df, detail, by_dept, grand, issues, counts, veneer_pack)
     wb.save(path)
 
 
@@ -575,7 +843,7 @@ def parse_args(argv):
     positional, options = [], {}
     i = 0
     while i < len(argv):
-        if argv[i] in ("--extra-bom", "--extra-counts"):
+        if argv[i] in ("--extra-bom", "--extra-counts", "--veneer"):
             if i + 1 >= len(argv):
                 raise SystemExit(f"{argv[i]} يحتاج مسار ملف بعده.")
             options[argv[i]] = argv[i + 1]
@@ -604,7 +872,20 @@ def main():
     df = prepare(materials, counts)
     detail, by_dept, grand = build_tables(df)
     issues = build_issues(df, counts)
-    write_output(dst, df, detail, by_dept, grand, issues, counts)
+
+    veneer_pack = None
+    veneer_path = options.get("--veneer")
+    has_tab = IN_VENEER in pd.ExcelFile(src).sheet_names
+    if veneer_path or has_tab:
+        if veneer_path:
+            veneer, own_counts = load_veneer(veneer_path, counts)
+        else:
+            veneer, own_counts = load_veneer_tab(src)
+        totals, compare = build_veneer_tables(veneer, detail)
+        issues = pd.concat([issues, veneer_issues(veneer, counts)], ignore_index=True)
+        veneer_pack = (veneer, totals, compare)
+
+    write_output(dst, df, detail, by_dept, grand, issues, counts, veneer_pack)
 
     used = df[df["product_count"] > 0]
     print(f"تم إنشاء: {dst}")
@@ -613,6 +894,9 @@ def main():
     print(f"  أسطر تفصيلية       : {len(detail)}")
     print(f"  أسطر لكل قسم       : {len(by_dept)}")
     print(f"  ملاحظات للمراجعة   : {len(issues)}")
+    if veneer_pack:
+        for _, row in veneer_pack[1].iterrows():
+            print(f"  قشرة {row['kind']:<10}: {row['total_m']:,.2f} متر")
 
 
 if __name__ == "__main__":
