@@ -15,6 +15,12 @@
 
 الاستخدام:
     python calc_materials.py <ملف_المدخلات.xlsx> [ملف_المخرجات.xlsx]
+                             [--extra-bom خامات.csv] [--extra-counts اعداد.csv]
+
+الملفان الاختياريان يضيفان منتجات غير موجودة في ملف الإكسل:
+    --extra-bom     أعمدة: المنتج، كود المنتج، القسم، كود الخامة، اسم الخامة،
+                    الكمية للوحدة، الوحدة
+    --extra-counts  أعمدة: اسم المنتج، العدد
 """
 
 import re
@@ -85,12 +91,13 @@ def match_key(value):
 
 
 def code_to_text(value):
-    """تحويل كود الخامة إلى نص (بدون .0 الناتجة عن قراءة الأرقام)."""
+    """كود الخامة كنص: بدون .0 من قراءة الأرقام وبدون بادئة النظام (RM- / FB-)."""
     if pd.isna(value):
         return ""
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
-    return clean_text(value)
+    # النظام الجديد يكتب الأكواد بالصيغة RM-11003 بينما الملف القديم يكتبها 11003
+    return re.sub(r"^[A-Za-z]{2,3}-", "", clean_text(value))
 
 
 # --------------------------------------------------------------------------
@@ -111,6 +118,39 @@ def load_input(path):
     counts["product"] = counts["product"].map(clean_text)
     counts["count"] = pd.to_numeric(counts["count"], errors="coerce").fillna(0)
     return materials, counts
+
+
+def load_extra(bom_path, counts_path):
+    """قراءة منتجات إضافية من ملفي CSV وتحويلها لنفس شكل تابة الخامات."""
+    if not bom_path:
+        return None, None
+
+    bom = pd.read_csv(bom_path)
+    required = ["المنتج", "القسم", "كود الخامة", "اسم الخامة", "الكمية للوحدة", "الوحدة"]
+    missing = [c for c in required if c not in bom.columns]
+    if missing:
+        raise SystemExit(f"ينقص ملف الخامات الإضافي الأعمدة: {', '.join(missing)}")
+
+    rows = pd.DataFrame({col: "" for col in COLS}, index=bom.index)
+    rows["prod_en"] = bom["المنتج"]
+    rows["model"] = bom["المنتج"]
+    rows["code"] = bom.get("كود المنتج", "")
+    rows["dept"] = bom["القسم"]
+    rows["mat_code"] = bom["كود الخامة"]
+    rows["mat_name"] = bom["اسم الخامة"]
+    rows["mat_type"] = "خامة"
+    rows["qty_per_unit"] = bom["الكمية للوحدة"]
+    rows["unit"] = bom["الوحدة"]
+    rows["status"] = "له قائمة"
+    rows["source_row"] = [f"{bom_path} صف {i + 2}" for i in bom.index]
+
+    extra_counts = None
+    if counts_path:
+        extra_counts = pd.read_csv(counts_path)
+        extra_counts.columns = ["product", "count"]
+        extra_counts["product"] = extra_counts["product"].map(clean_text)
+        extra_counts["count"] = pd.to_numeric(extra_counts["count"], errors="coerce").fillna(0)
+    return rows, extra_counts
 
 
 def prepare(materials, counts):
@@ -457,13 +497,36 @@ def write_output(path, df, detail, by_dept, grand, issues, counts):
     wb.save(path)
 
 
+def parse_args(argv):
+    positional, options = [], {}
+    i = 0
+    while i < len(argv):
+        if argv[i] in ("--extra-bom", "--extra-counts"):
+            if i + 1 >= len(argv):
+                raise SystemExit(f"{argv[i]} يحتاج مسار ملف بعده.")
+            options[argv[i]] = argv[i + 1]
+            i += 2
+        else:
+            positional.append(argv[i])
+            i += 1
+    return positional, options
+
+
 def main():
-    if len(sys.argv) < 2:
-        raise SystemExit("الاستخدام: python calc_materials.py <ملف_المدخلات.xlsx> [ملف_المخرجات.xlsx]")
-    src = sys.argv[1]
-    dst = sys.argv[2] if len(sys.argv) > 2 else "احتياجات_الخامات.xlsx"
+    positional, options = parse_args(sys.argv[1:])
+    if not positional:
+        raise SystemExit(__doc__)
+    src = positional[0]
+    dst = positional[1] if len(positional) > 1 else "احتياجات_الخامات.xlsx"
 
     materials, counts = load_input(src)
+    extra_rows, extra_counts = load_extra(options.get("--extra-bom"),
+                                          options.get("--extra-counts"))
+    if extra_rows is not None:
+        materials = pd.concat([materials, extra_rows], ignore_index=True)
+    if extra_counts is not None:
+        counts = pd.concat([counts, extra_counts], ignore_index=True)
+
     df = prepare(materials, counts)
     detail, by_dept, grand = build_tables(df)
     issues = build_issues(df, counts)
