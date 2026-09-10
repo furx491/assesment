@@ -33,9 +33,18 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
+# تابات ملف المصدر الأصلي
 SHEET_MATERIALS = "الخامات للمنتجات اريكة"
 SHEET_COUNTS = "الاعداد "
 HEADER_ROW = 4  # صف العناوين في تابة الخامات (1-based)
+
+# تابات المدخلات داخل الملف الناتج — الملف يقرأ نفسه، فيمكن التعديل عليه وإعادة التشغيل
+IN_MATERIALS = "مدخلات - قائمة الخامات"
+IN_COUNTS = "مدخلات - الأعداد المطلوبة"
+
+IN_MATERIALS_COLS = ["المنتج", "الموديل", "كود المنتج", "القسم الإنتاجي",
+                     "كود الخامة", "اسم الخامة", "الكمية للوحدة", "الوحدة", "المصدر"]
+IN_COUNTS_COLS = ["اسم المنتج", "العدد"]
 
 COLS = ["code", "collection", "prod_en", "model", "piece_type",
         "furx_name", "old_code", "old_name", "category", "version",
@@ -104,6 +113,11 @@ def code_to_text(value):
 # قراءة المدخلات
 # --------------------------------------------------------------------------
 def load_input(path):
+    """يقرأ الملف الأصلي أو ملفًا ناتجًا عن هذا السكربت (تابات المدخلات بداخله)."""
+    names = pd.ExcelFile(path).sheet_names
+    if IN_MATERIALS in names and IN_COUNTS in names:
+        return load_consolidated(path)
+
     materials = pd.read_excel(path, sheet_name=SHEET_MATERIALS, header=HEADER_ROW - 1)
     if len(materials.columns) != len(COLS):
         raise SystemExit(
@@ -113,6 +127,35 @@ def load_input(path):
     materials["source_row"] = materials.index + HEADER_ROW + 1
 
     counts = pd.read_excel(path, sheet_name=SHEET_COUNTS)
+    counts.columns = ["product", "count"]
+    counts = counts[counts["product"].notna()].copy()
+    counts["product"] = counts["product"].map(clean_text)
+    counts["count"] = pd.to_numeric(counts["count"], errors="coerce").fillna(0)
+    return materials, counts
+
+
+def load_consolidated(path):
+    """قراءة تابتي المدخلات من ملف أنتجه هذا السكربت."""
+    src = pd.read_excel(path, sheet_name=IN_MATERIALS)
+    missing = [c for c in IN_MATERIALS_COLS[:-1] if c not in src.columns]
+    if missing:
+        raise SystemExit(f"ينقص تابة «{IN_MATERIALS}» الأعمدة: {', '.join(missing)}")
+
+    materials = pd.DataFrame({col: "" for col in COLS}, index=src.index)
+    materials["prod_en"] = src["المنتج"]
+    materials["model"] = src["الموديل"]
+    materials["code"] = src["كود المنتج"]
+    materials["dept"] = src["القسم الإنتاجي"]
+    materials["mat_code"] = src["كود الخامة"]
+    materials["mat_name"] = src["اسم الخامة"]
+    materials["mat_type"] = "خامة"
+    materials["qty_per_unit"] = src["الكمية للوحدة"]
+    materials["unit"] = src["الوحدة"]
+    materials["status"] = "له قائمة"
+    materials["source_row"] = src.get("المصدر", pd.Series("", index=src.index))
+
+    counts = pd.read_excel(path, sheet_name=IN_COUNTS)
+    counts = counts.iloc[:, :2]
     counts.columns = ["product", "count"]
     counts = counts[counts["product"].notna()].copy()
     counts["product"] = counts["product"].map(clean_text)
@@ -299,16 +342,18 @@ def build_issues(df, counts):
 THIN = Side(style="thin", color="D0D0D0")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 HEAD_FILL = PatternFill("solid", fgColor="1F4E79")
+IN_HEAD_FILL = PatternFill("solid", fgColor="7F6000")  # تابات المدخلات بلون مختلف
 HEAD_FONT = Font(bold=True, color="FFFFFF", size=11)
 TITLE_FONT = Font(bold=True, size=14, color="1F4E79")
 
 
-def write_sheet(wb, title, headers, rows, widths, number_cols=(), table_name=None):
+def write_sheet(wb, title, headers, rows, widths, number_cols=(), table_name=None,
+                head_fill=HEAD_FILL):
     ws = wb.create_sheet(title)
     ws.sheet_view.rightToLeft = True
     ws.append(headers)
     for cell in ws[1]:
-        cell.fill = HEAD_FILL
+        cell.fill = head_fill
         cell.font = HEAD_FONT
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     ws.row_dimensions[1].height = 30
@@ -434,18 +479,46 @@ def write_summary(wb, df, detail, by_dept, grand, issues, counts):
         "الإجمالي: كل خامة مرة واحدة — الكمية الكلية المطلوب شراؤها للمصنع كله.",
         "الإجمالي لكل قسم: نفس الكميات موزّعة على الأقسام (قائمة شراء كل قسم).",
         "فرعي - تفصيل المنتجات: أصل الحساب — كل سطر منتج × خامة (الكمية للوحدة × العدد).",
-        "ملاحظات ومشاكل البيانات: أسطر ناقصة أو متعارضة في ملف المصدر تحتاج مراجعة.",
+        "ملاحظات ومشاكل البيانات: أسطر ناقصة أو متعارضة في البيانات تحتاج مراجعة.",
+        f"{IN_MATERIALS}: كل أسطر الخامات لكل منتج — هنا تضيف منتجًا أو تعدّل كمية.",
+        f"{IN_COUNTS}: العدد المطلوب من كل منتج — غيّر الرقم فقط. العدد صفر = لا يُحسب.",
+        "",
         "طريقة الحساب: الكمية الإجمالية = الكمية للوحدة × العدد المطلوب من المنتج.",
         "الكميات لا تُجمع عبر وحدات مختلفة (متر لا يُجمع مع كيلو) — كل وحدة في سطر مستقل.",
+        "التابتان البنّيتان مدخلات تُعدَّل، والزرقاء نتائج محسوبة — لا تكتب فيها.",
+        "بعد أي تعديل على تابتي المدخلات، شغّل السكربت على نفس الملف لتحديث النتائج.",
     ]
     for note in notes:
-        ws.cell(row=r, column=1, value="• " + note)
+        if note:
+            ws.cell(row=r, column=1, value="• " + note)
         r += 1
 
     ws.column_dimensions["A"].width = 65
     ws.column_dimensions["B"].width = 22
     ws.column_dimensions["C"].width = 26
     return ws
+
+
+def write_inputs(wb, df, counts):
+    """تابتا المدخلات: كل أسطر الخامات والأعداد — قابلة للتعديل وإعادة التشغيل."""
+    rows = df.sort_values(["product", "dept", "mat_name"], kind="stable")
+    write_sheet(
+        wb, IN_MATERIALS, IN_MATERIALS_COLS,
+        [[r["product"], r["model"], r["product_code"], r["dept"], r["mat_code"],
+          r["mat_name"], float(r["qty_per_unit"]), r["unit"], str(r["source_row"])]
+         for _, r in rows.iterrows()],
+        [30, 30, 16, 22, 14, 40, 14, 14, 26],
+        number_cols={7}, table_name="InputMaterials", head_fill=IN_HEAD_FILL,
+    )
+
+    known = {match_key(p) for p in counts["product"]}
+    extra = [(p, 0) for p in sorted(set(df["product"])) if match_key(p) not in known]
+    write_sheet(
+        wb, IN_COUNTS, IN_COUNTS_COLS,
+        [[p, int(c)] for p, c in zip(counts["product"], counts["count"])] +
+        [[p, c] for p, c in extra],
+        [40, 14], number_cols={2}, table_name="InputCounts", head_fill=IN_HEAD_FILL,
+    )
 
 
 def write_output(path, df, detail, by_dept, grand, issues, counts):
@@ -493,6 +566,7 @@ def write_output(path, df, detail, by_dept, grand, issues, counts):
         for cell in row:
             cell.alignment = Alignment(horizontal="right", vertical="center", wrap_text=True)
 
+    write_inputs(wb, df, counts)
     write_summary(wb, df, detail, by_dept, grand, issues, counts)
     wb.save(path)
 
